@@ -1,0 +1,111 @@
+True label,Pred label,Concordant,Pred bool,True bool,Replicate
+Z1,Z1,True,True,True,0
+Z2,Z2 or Z3 or Z6,True,False,False,0
+Z3,Z2 or Z3 or Z6,True,False,False,0
+Z4,Z4,True,False,False,0
+Z5,Z5,True,False,False,0
+Z6,Z2 or Z3 or Z6,True,False,False,0
+Z7,Z7,True,False,False,0
+Z8,Z8,True,False,False,0
+Z1 (B1),Z1,True,True,True,0
+Z1 (B2),Z1,True,True,True,0
+Z1 (B3),Z1,True,True,True,0
+Z1,Z1,True,True,True,1
+Z2,Z2 or Z3 or Z6,True,False,False,1
+Z3,Z2 or Z3 or Z6,True,False,False,1
+Z4,Z4,True,False,False,1
+Z5,Z5,True,False,False,1
+Z6,Z2 or Z3 or Z6,True,False,False,1
+Z7,Z7,True,False,False,1
+Z8,Z8,True,False,False,1
+Z1 (B1),Z1,True,True,True,1
+Z1 (B2),Z1,True,True,True,1
+Z1 (B3),Z1,True,True,True,1
+Z1,Z1,True,True,True,2
+Z2,Z2 or Z3 or Z6,True,False,False,2
+Z3,Z2 or Z3 or Z6,True,False,False,2
+Z4,Z4,True,False,False,2
+Z5,Z5,True,False,False,2
+Z6,Z2 or Z3 or Z6,True,False,False,2
+Z7,Z7,True,False,False,2
+Z8,Z8,True,False,False,2
+Z1 (B1),Z1,True,True,True,2
+Z1 (B2),Z1,True,True,True,2
+Z1 (B3),Z1,True,True,True,2
+Z1,Z1,True,True,True,3
+Z2,Z2 or Z3 or Z6,True,False,False,3
+Z3,Z2 or Z3 or Z6,True,False,False,3
+Z4,Z4,True,False,False,3
+Z5,Z5,True,False,False,3
+Z6,Z2 or Z3 or Z6,True,False,False,3
+Z7,Z7,True,False,False,3
+Z8,Z8,True,False,False,3
+Z1 (B1),Z1,True,True,True,3
+Z1 (B2),Z1,True,True,True,3
+Z1 (B3),Z1,True,True,True,3
+Z1,Z1,True,True,True,4
+Z2,Z2 or Z3 or Z6,True,False,False,4
+Z3,Z2 or Z3 or Z6,True,False,False,4
+Z4,Z4,True,False,False,4
+Z5,Z5,True,False,False,4
+Z6,Z2 or Z3 or Z6,True,False,False,4
+Z7,Z7,True,False,False,4
+Z8,Z8,True,False,False,4
+Z1 (B1),Z1,True,True,True,4
+Z1 (B2),Z1,True,True,True,4
+Z1 (B3),Z1,True,True,True,4
+Z1,Z1,True,True,True,5
+Z2,Z2 or Z3 or Z6,True,False,False,5
+Z3,Z2 or Z3 or Z6,True,False,False,5
+Z4,Z4,True,False,False,5
+Z5,Z5,True,False,False,5
+Z6,Z2 or Z3 or Z6,True,False,False,5
+Z7,Z7,True,False,False,5
+Z8,Z8,True,False,False,5
+Z1 (B1),Z1,True,True,True,5
+Z1 (B2),Z1,True,True,True,5
+Z1 (B3),Z1,True,True,True,5
+Z1,Z1,True,True,True,6
+Z2,Z2 or Z3 or Z6,True,False,False,6
+Z3,Z2 or Z3 or Z6,True,False,False,6
+Z4,Z4,True,False,False,6
+Z5,Z5,True,False,False,6
+Z6,Z2 or Z3 or Z6,True,False,False,6
+Z7,Z7,True,False,False,6
+Z8,Z8,True,False,False,6
+Z1 (B1),Z1,True,True,True,6
+Z1 (B2),Z1,True,True,True,6
+Z1 (B3),Z1,True,True,True,6
+Z1,Z1,True,True,True,7
+Z2,Z2 or Z3 or Z6,True,False,False,7
+Z3,Z2 or Z3 or Z6,True,False,False,7
+Z4,Z4,True,False,False,7
+Z5,Z5,True,False,False,7
+Z6,Z2 or Z3 or Z6,True,False,False,7
+Z7,Z7,True,False,False,7
+Z8,Z8,True,False,False,7
+Z1 (B1),Z1,True,True,True,7
+Z1 (B2),Z1,True,True,True,7
+Z1 (B3),Z1,True,True,True,7
+Z1,Z1,True,True,True,8
+Z2,Z2 or Z3 or Z6,True,False,False,8
+Z3,Z2 or Z3 or Z6,True,False,False,8
+Z4,Z4,True,False,False,8
+Z5,Z5,True,False,False,8
+Z6,Z2 or Z3 or Z6,True,False,False,8
+Z7,Z7,True,False,False,8
+Z8,Z8,True,False,False,8
+Z1 (B1),Z1,True,True,True,8
+Z1 (B2),Z1,True,True,True,8
+Z1 (B3),Z1,True,True,True,8
+Z1,Z1,True,True,True,9
+Z2,Z2 or Z3 or Z6,True,False,False,9
+Z3,Z2 or Z3 or Z6,True,False,False,9
+Z4,Z4,True,False,False,9
+Z5,Z5,True,False,False,9
+Z6,Z2 or Z3 or Z6,True,False,False,9
+Z7,Z7,True,False,False,9
+Z8,Z8,True,False,False,9
+Z1 (B1),Z1,True,True,True,9
+Z1 (B2),Z1,True,True,True,9
+Z1 (B3),Z1,True,True,True,9

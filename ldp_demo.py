@@ -28,7 +28,7 @@ def main():
 
     # Parse arguments.
     # Example call:
-    # python ldp_demo.py -x=1 -m=0 -b=1 -n=5000 -a=0.005 -r=10
+    # python ldp_demo.py -x=1 -m=0 -b=1 -n=5000 -a=0.005 -r=10 -e=0
     parser = argparse.ArgumentParser()
     parser.add_argument("-x",
                         type = int,
@@ -117,8 +117,8 @@ def main():
         
         df_results = pd.DataFrame({"True label": true_labels, 
                                    "Pred label": pred_labels})
-        df_results["Concordant"] = [True if x[:2] in y else False \
-                                    for x,y in zip(df_results["True label"],df_results["Pred label"])]
+        df_results["Label concordant"] = [True if x[:2] in y else False \
+                                          for x,y in zip(df_results["True label"],df_results["Pred label"])]
         df_results["Pred bool"] = results.get("Predicted boolean")
         df_results["True bool"] = [True if "Z1" in x else False for x in true_labels]
 
@@ -132,7 +132,7 @@ def main():
         
         if args.r == 1:
             print(df_results)
-            overall_accuracy = df_results["Concordant"].sum() / df_results["Concordant"].shape[0]
+            overall_accuracy = df_results["Label concordant"].sum() / df_results["Label concordant"].shape[0]
             print("\n--*-- OVERALL ACCURACY: {} --*--".format(overall_accuracy))
             if args.e:
                 df_results.to_csv("results_discrete_xy-{}_noise-{}_fun-{}_n-{}.csv".format(args.x,
@@ -143,7 +143,7 @@ def main():
         else:
             df_results["Replicate"] = replicate
             results_df_list.append(df_results)
-            accuracy = df_results["Concordant"].sum() / df_results["Concordant"].shape[0]
+            accuracy = df_results["Label concordant"].sum() / df_results["Label concordant"].shape[0]
             accuracy_list.append(accuracy)
 
     # Aggregate results.
@@ -172,7 +172,7 @@ def main():
     
     
     # Report performance.
-    print(df_all["Concordant"].sum(), df_all["Concordant"].shape[0])
+    print(df_all["Label concordant"].sum(), df_all["Label concordant"].shape[0])
     print("\n--*-- OVERALL ACCURACY: {} ({}-{}) --*--".format(round(mean_accuracy, 1), 
                                                               round(ci_accuracy[0], 1),
                                                               min(round(ci_accuracy[1], 1), 100)))
