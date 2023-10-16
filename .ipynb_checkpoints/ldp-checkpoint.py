@@ -85,42 +85,6 @@ class LDP():
         self.total_tests += 1
 
         return p_value
-    
-    
-    def oracle(self,
-               var_0, 
-               var_1, 
-               conditioning_set = None):
-        
-        '''
-        Oracle independence test given ground truth DAG.
-        This method only works for variants of the 10-node DAG, where each covariate
-        is directly adjacent to {X,Y} and has no paths to other covariates.
-        '''
-        
-        if self.dag is None:
-            raise ValueError("self.dag is None; must supply ground truth DAG as numpy array to use oracle.")
-        
-        # Obtain column indices.
-        var_list = ["X", "Y", "Z1", "Z2", "Z3", "Z4", "Z5", "Z6", "Z7", "Z8"]
-        var_0 = var_0.split(sep = ".")[0]
-        var_1 = var_1.split(sep = ".")[0]
-        var_0_idx = var_list.index(var_0)
-        var_1_idx = var_list.index(var_1)
-        if conditioning_set is not None:
-            conditioning_set = set([x.split(sep = ".")[0] for x in conditioning_set])
-            if var_0 in conditioning_set:
-                conditioning_set.remove(var_0)
-            if var_1 in conditioning_set:
-                conditioning_set.remove(var_1)
-            cond_idx = set([var_list.index(x) for x in conditioning_set])
-        else:
-            cond_idx = set()
-        
-        # Get p-value using ground truth DAG.
-        graph = nx.from_numpy_array(self.dag, create_using = nx.DiGraph)
-        p_val = 1 if nx.d_separated(graph, {var_0_idx}, {var_1_idx}, cond_idx) else 0
-        return p_val
         
         
     def partition_z(self,
@@ -137,10 +101,7 @@ class LDP():
         
         
         '''
-        This method partitions dataset Z into confounders (Z1), colliders 
-        and children of outcome (Z2/Z6), causes of outcome (Z4), isolated
-        variables (Z8), instruments and children of exposure (Z5/Z7), and 
-        mediators (Z3).
+        This method partitions dataset Z.
         '''
         
         # Extract variable names from columns.
