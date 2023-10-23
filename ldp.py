@@ -24,49 +24,49 @@ from sklearn.metrics import confusion_matrix
 
 
 class LDP():
-    
-    
-    def __init__(self, 
-                 data: pd.DataFrame, 
+
+
+    def __init__(self,
+                 data: pd.DataFrame,
                  independence_test: str = "chi"):
-        
+
         # Store data.
         self.data = data
-        
+
         # Instantiate objects for independence testing.
         if independence_test == "chi":
             self.test = CIT(self.data.to_numpy(), "chisq")
-        elif independence_test == "fisher":  
+        elif independence_test == "fisher":
             self.test = CIT(self.data.to_numpy(), "fisherz")
-        elif independence_test == "kci":  
+        elif independence_test == "kci":
             self.test = CIT(self.data.to_numpy(), "kci")
-        elif independence_test == "gsq":  
+        elif independence_test == "gsq":
             self.test = CIT(self.data.to_numpy(), "gsq")
         elif independence_test == "oracle":
             self.test = "oracle"
-        
+
         # Init data structures for memoization.
         self.x_ind_z_dict = dict()
         self.y_ind_z_dict = dict()
-        
+
         # Track how many tests were performed.
         self.total_tests = 0
-        
-        
+
+
     def ind_test(self,
-                 var_0: str, 
+                 var_0: str,
                  var_1: str,
                  conditioning_set: list = None) -> float:
-    
+
         '''
         Wrapper for independence test that takes variable names as strings
         for easier user interpretability.
-        
+
         Return:
         -------
         p_value
         '''
-        
+
         if self.test != "oracle":
             # Obtain column indices (independence test references array columns).
             df_cols = list(self.data.columns)
@@ -85,8 +85,46 @@ class LDP():
         self.total_tests += 1
 
         return p_value
-        
-        
+
+
+    def oracle(self,
+               var_0,
+               var_1,
+               conditioning_set = None):
+
+        '''
+        Oracle independence test given ground truth DAG.
+        This method only works for variants of the 10-node DAG, where each covariate
+        is directly adjacent to {X,Y} and has no paths to other covariates.
+
+        This test is used for the experiments reported in Figure 2 and Table B.1.
+        '''
+
+        if self.dag is None:
+            raise ValueError("self.dag is None; must supply ground truth DAG as numpy array to use oracle.")
+
+        # Obtain column indices.
+        var_list = ["X", "Y", "Z1", "Z2", "Z3", "Z4", "Z5", "Z6", "Z7", "Z8"]
+        var_0 = var_0.split(sep = ".")[0]
+        var_1 = var_1.split(sep = ".")[0]
+        var_0_idx = var_list.index(var_0)
+        var_1_idx = var_list.index(var_1)
+        if conditioning_set is not None:
+            conditioning_set = set([x.split(sep = ".")[0] for x in conditioning_set])
+            if var_0 in conditioning_set:
+                conditioning_set.remove(var_0)
+            if var_1 in conditioning_set:
+                conditioning_set.remove(var_1)
+            cond_idx = set([var_list.index(x) for x in conditioning_set])
+        else:
+            cond_idx = set()
+
+        # Get p-value using ground truth DAG.
+        graph = nx.from_numpy_array(self.dag, create_using = nx.DiGraph)
+        p_val = 1 if nx.d_separated(graph, {var_0_idx}, {var_1_idx}, cond_idx) else 0
+        return p_val
+
+
     def partition_z(self,
                     exposure: str = "X",
                     outcome: str = "Y",
@@ -98,17 +136,17 @@ class LDP():
                     alpha: float = 0.005,
                     scale: bool = True,
                     verbose: bool = False) -> dict:
-        
-        
+
+
         '''
         This method partitions dataset Z.
         '''
-        
+
         # Extract variable names from columns.
         self.z_names = list(self.data.columns)
         self.z_names.remove(exposure)
         self.z_names.remove(outcome)
-        
+
         # Initialize data structures that will store results.
         self.pred_bool_list   = [False] * (len(self.z_names))
         self.pred_bool_dict   = dict(zip(self.z_names, self.pred_bool_list))
@@ -124,27 +162,27 @@ class LDP():
         self.z_mix            = []
         self.z_post           = []
         self.z1_z5            = []
-        
+
         #---------------------------------------
         # Steps 1–3: Test for Z8, Z4, and Z5/Z7.
         #---------------------------------------
-        
+
         start = time.time()
-        self.partition_z_steps_1_2_3(exposure = exposure, 
-                                     outcome = outcome, 
+        self.partition_z_steps_1_2_3(exposure = exposure,
+                                     outcome = outcome,
                                      alpha = alpha,
                                      verbose = verbose)
         if verbose:
             print("***Steps 1–3 complete in {} seconds.".format(round(time.time() - start, 4)))
-            
+
         #---------------------------------------
-        # Step 4: Test for Z_post.
+        # Step 4: Identify a fraction of Z_post.
         #---------------------------------------
 
         if len(self.z4) > 0:
             start = time.time()
-            self.partition_z_step_4(exposure = exposure, 
-                                    outcome = outcome, 
+            self.partition_z_step_4(exposure = exposure,
+                                    outcome = outcome,
                                     causes_outcome = causes_outcome,
                                     use_random_z4 = use_random_z4,
                                     alpha = alpha,
@@ -154,21 +192,21 @@ class LDP():
         else:
             if verbose:
                 print("***No Z4 discovered. Z_post not identifiable.")
-        
+
         #---------------------------------------
-        # Step 5: Test Z_mix.
+        # Step 5: Identify Z_mix.
         #---------------------------------------
-                    
+
         start = time.time()
-        self.partition_z_step_5(exposure = exposure, 
-                                outcome = outcome, 
+        self.partition_z_step_5(exposure = exposure,
+                                outcome = outcome,
                                 alpha = alpha,
                                 verbose = verbose)
         if verbose:
             print("***Step 5 complete in {} seconds.".format(round(time.time() - start, 4)))
-        
+
         #---------------------------------------
-        # Step 6: Differentiate Z1/Z5 from Z2/Z3.
+        # Step 6: Resolve Z_post and Z_mix.
         #---------------------------------------
 
         start = time.time()
@@ -179,38 +217,38 @@ class LDP():
                                 verbose = verbose)
         if verbose:
             print("***Step 6 complete in {} seconds.".format(round(time.time() - start, 4)))
-            
+
         #---------------------------------------
-        # Step 7: Differentiate Z1 and Z5.
-        #--------------------------------------- 
-        
+        # Step 7: Resolve Z1 and Z5.
+        #---------------------------------------
+
         start = time.time()
-        self.partition_z_step_7(exposure = exposure, 
+        self.partition_z_step_7(exposure = exposure,
                                 outcome = outcome,
                                 alpha = alpha,
                                 verbose = verbose)
-        
+
         if verbose:
             print("***Step 7 complete in {} seconds.".format(round(time.time() - start, 4)))
         #'''
-  
+
         #---------------------------------------
         # Return results.
-        #---------------------------------------    
+        #---------------------------------------
 
         # Construct results dictionary.
         results = {"Predicted label": list(self.pred_label_dict.values()),
-                   "Predicted boolean": list(self.pred_bool_dict.values()), 
-                   "Z1": self.z1, 
+                   "Predicted boolean": list(self.pred_bool_dict.values()),
+                   "Z1": self.z1,
                    "Z3": self.z3,
                    "Z4": self.z4,
                    "Z5": self.z5,
                    "Z7": self.z7,
                    "Z8": self.z8,
-                   "Z_post": self.z_post}     
+                   "Z_post": self.z_post}
         return results
-    
-    
+
+
     def partition_z_steps_1_2_3(self,
                                 exposure: str = "X",
                                 outcome: str = "Y",
@@ -218,14 +256,14 @@ class LDP():
                                 verbose: bool = False):
 
         for candidate in self.z_names:
-        
-            #---------------------------------------
-            # Step 1: Test for isolated variables.
-            #---------------------------------------
+
+            #-------------------------------------------
+            # Step 1: Test for isolated variables (Z8).
+            #-------------------------------------------
 
 
-            is_isolated = self.test_isolated(exposure = exposure, 
-                                             outcome = outcome, 
+            is_isolated = self.test_isolated(exposure = exposure,
+                                             outcome = outcome,
                                              candidate = candidate,
                                              alpha = alpha,
                                              verbose = verbose)
@@ -235,12 +273,12 @@ class LDP():
                 self.pred_label_dict[candidate] = "Z8"
                 continue
 
-            #---------------------------------------
-            # Step 2: Test for causes of outcome.
-            #---------------------------------------
+            #-----------------------------------------
+            # Step 2: Test for causes of outcome (Z4).
+            #-----------------------------------------
 
-            causes_y = self.test_causes_outcome(exposure = exposure, 
-                                                outcome = outcome, 
+            causes_y = self.test_causes_outcome(exposure = exposure,
+                                                outcome = outcome,
                                                 candidate = candidate,
                                                 alpha = alpha,
                                                 verbose = verbose)
@@ -250,16 +288,16 @@ class LDP():
                 self.pred_label_dict[candidate] = "Z4"
                 continue
 
-            #---------------------------------------------------------
-            # Step 3: Test for children of exposure.
-            #---------------------------------------------------------
+            #---------------------------------------------------------------------------
+            # Step 3: Test for children of exposure (Z7) and sometimes instruments (Z5).
+            #---------------------------------------------------------------------------
 
-            # Conditioning only on the exposure is often sufficient in practice, 
+            # Conditioning only on the exposure is often sufficient in practice,
             # even in the presence of open backdoor paths.
             conditioning_set = [exposure]
             is_z5_z7 = self.test_causes_or_caused_by_exposure(conditioning_set = conditioning_set,
-                                                              exposure = exposure, 
-                                                              outcome = outcome, 
+                                                              exposure = exposure,
+                                                              outcome = outcome,
                                                               candidate = candidate,
                                                               alpha = alpha,
                                                               verbose = verbose)
@@ -273,7 +311,7 @@ class LDP():
             self.z_prime.append(candidate)
             self.pred_label_dict[candidate] = "not identifiable"
 
-        
+
     def partition_z_step_4(self,
                            exposure: str = "X",
                            outcome: str = "Y",
@@ -281,11 +319,11 @@ class LDP():
                            use_random_z4: bool = False,
                            alpha: float = 0.005,
                            verbose: bool = False):
-        
+
         #--------------------------------------------------------
-        # Step 4: Test for Z2, Z3, Z6.
+        # Step 4: Identify a fraction of Z_post.
         #--------------------------------------------------------
-        
+
         # Consider all candidates that might still be confounders.
         for candidate in self.z_prime:
 
@@ -296,75 +334,75 @@ class LDP():
                     causes_outcome = [random.choice(self.z4)]
                 else:
                     causes_outcome = self.z4.copy()
-            is_post = self.test_shielded_collider(exposure = exposure, 
-                                                  outcome = outcome, 
+            is_post = self.test_shielded_collider(exposure = exposure,
+                                                  outcome = outcome,
                                                   candidate = candidate,
                                                   causes_outcome = causes_outcome,
                                                   alpha = alpha,
                                                   verbose = verbose)
             if is_post:
                 if verbose:
-                    print(candidate, "is in post (STEP 4).")
+                    print(candidate, "is in Z_post (STEP 4).")
                 self.pred_label_dict[candidate] = "Z2 or Z3 or Z6"
                 self.z_post.append(candidate)
-                
-        # Remove Z2, Z3, Z6 from remaining candidates.
+
+        # Remove Z_post from remaining candidates.
         self.z_prime = [x for x in self.z_prime if x not in self.z_post]
-        
-        
+
+
     def partition_z_step_5(self,
                            exposure: str = "X",
                            outcome: str = "Y",
                            alpha: float = 0.005,
                            verbose: bool = False):
-        
-        #---------------------------------------------------------
-        # Step 5: Test for Z1, Z3, Z5.
-        #---------------------------------------------------------
-        
+
+        #---------------------------
+        # Step 5: Identify Z_mix.
+        #---------------------------
+
         # Consider all candidates that might still be confounders.
         for candidate in self.z_prime:
-            
+
             # Get conditioning set.
             conditioning_set = self.z_prime.copy()
             conditioning_set.remove(candidate)
             if len(conditioning_set) == 0:
                 conditioning_set = None
-            
+
             # Identify instrumental variables and children of the exposure.
             is_parent_of_x = self.test_causes_or_caused_by_exposure(conditioning_set = conditioning_set,
-                                                                    exposure = exposure, 
-                                                                    outcome = outcome, 
+                                                                    exposure = exposure,
+                                                                    outcome = outcome,
                                                                     candidate = candidate,
                                                                     alpha = alpha,
                                                                     verbose = verbose)
             if is_parent_of_x:
                 self.pred_label_dict[candidate] = "Z1 or Z2 or Z3 or Z5"
                 self.z_mix.append(candidate)
-        
+
         # Remove Z1, Z2, Z3, Z5 from remaining candidates.
         self.z_prime = [x for x in self.z_prime if x not in self.z_mix]
-        
-        
+
+
     def partition_z_step_6(self,
                            exposure: str,
                            instrument: str = None,
                            use_random_z5: bool = False,
                            alpha: float = 0.005,
                            verbose: bool = False):
-        
-        #---------------------------------------------
-        # Step 6: Test for Z1/Z5 vs Z2/Z3.
-        #---------------------------------------------
+
+        #--------------------------------------
+        # Step 6: Resolve Z_mix and Z_post.
+        #--------------------------------------
 
         # Test all remaining variables to differentiate confounders from mediators.
         # This test should only be passed when comparing two confounders, (if one
-        # is mislabeled as an instrument), two instruments (if one is mislabeled as 
+        # is mislabeled as an instrument), two instruments (if one is mislabeled as
         # a confounder), or a confounder and an instrument.
-        
+
         # Init memoization structure.
         self.ind_dictionary = dict()
-        
+
         # Evaluate all variables that are still unlabeled.
         z_mix = self.z_mix.copy() + self.z5_z7.copy()
         for candidate in self.z_prime:
@@ -374,15 +412,15 @@ class LDP():
                 identified_confounder = False
                 ind_results = dict()
                 for var in z_mix:
-                    
+
                     # Test marginal independence between z_mix and candidate.
-                    m_ind = self.ind_test(var_0 = var, 
+                    m_ind = self.ind_test(var_0 = var,
                                           var_1 = candidate,
                                           conditioning_set = None)
                     ind_results[var] = m_ind > alpha
 
                     # Test conditional independence given the exposure.
-                    c_ind = self.ind_test(var_0 = var, 
+                    c_ind = self.ind_test(var_0 = var,
                                           var_1 = candidate,
                                           conditioning_set = [exposure])
 
@@ -404,7 +442,7 @@ class LDP():
                             self.pred_label_dict[candidate] = "Z1"
                             self.pred_bool_dict[candidate] = True
 
-                # Store independence results for each variable pair. 
+                # Store independence results for each variable pair.
                 # 1 = independent, 0 = dependent.
                 self.ind_dictionary[candidate] = ind_results
 
@@ -413,23 +451,23 @@ class LDP():
                     self.z3.append(candidate)
                     self.z_post.append(candidate)
                     self.pred_label_dict[candidate] = "Z2 or Z3 or Z6" # Previously, just "Z3"
-                
+
         # Now all Z7 are differentiated from Z5.
         self.z7 = [x for x in self.z5_z7 if x not in self.z1_z5]
         for z7 in self.z7:
             self.pred_label_dict[z7] = "Z7"
-            
+
         # Pass through all remaining z_mix one more time to remove remaining Z1.
         # By now, all Z5 should have been placed in self.z1_z5.
         z_mix_set = self.z_mix.copy()
         for z_mix in z_mix_set:
             for z1_z5 in self.z1_z5:
                 # Test marginal independence between z_mix and z1_z5.
-                m_ind = self.ind_test(var_0 = z_mix, 
+                m_ind = self.ind_test(var_0 = z_mix,
                                       var_1 = z1_z5,
                                       conditioning_set = None)
                 # Test conditional independence given the exposure.
-                #c_ind = self.ind_test(var_0 = z_mix, 
+                #c_ind = self.ind_test(var_0 = z_mix,
                 #                      var_1 = z1_z5,
                 #                      conditioning_set = [exposure])
                 # If a v-structure is identified, then z_mix is in Z1.
@@ -443,25 +481,25 @@ class LDP():
                         self.pred_bool_dict[z_mix] = True
                         self.z_mix.remove(z_mix)
                     break
-                
-        
+
+
         # Now all remaining z_mix are in z_post.
         self.z_post = self.z_mix + self.z_post
         for z_post in self.z_post:
             if z_post not in self.z3:
                 self.pred_label_dict[z_post] = "Z2 or Z3 or Z6"
-        
-        
+
+
     def partition_z_step_7(self,
                            exposure: str = "X",
                            outcome: str = "Y",
                            alpha: float = 0.005,
                            verbose: bool = False):
-        
+
         #---------------------------------------
-        # Step 7: Differentiate Z1 and Z5.
-        #--------------------------------------- 
-        
+        # Step 7: Resolve Z1 and Z5.
+        #---------------------------------------
+
         if len(self.z1_z5) == 0 or len(self.z1) == 0:
             print("***Cannot perform Step 7: len(self.z1_z5) == 0 or len(self.z1) == 0")
             return
@@ -487,13 +525,13 @@ class LDP():
                             self.pred_label_dict[candidate] = "Z1"
                             self.pred_bool_dict[candidate] = True
                             break
-            
+
             # All Z5 are those variables that were not detected as Z1.
             self.z5 = [x for x in self.z1_z5 if x not in self.z1]
             for z5 in self.z5:
                 self.pred_label_dict[z5] = "Z5"
 
-                        
+
     def test_isolated(self,
                       exposure: str = "X",
                       outcome: str = "Y",
@@ -504,8 +542,8 @@ class LDP():
         # Test marginal independence of X and Z.
         if candidate in self.x_ind_z_dict:
             x_ind_z = self.x_ind_z_dict.get(candidate)
-        else: 
-            x_ind_z = self.ind_test(var_0 = exposure, 
+        else:
+            x_ind_z = self.ind_test(var_0 = exposure,
                                     var_1 = candidate,
                                     conditioning_set = None)
             self.x_ind_z_dict[candidate] = x_ind_z
@@ -514,18 +552,18 @@ class LDP():
         if candidate in self.y_ind_z_dict:
             y_ind_z = self.y_ind_z_dict.get(candidate)
         else:
-            y_ind_z = self.ind_test(var_0 = outcome, 
+            y_ind_z = self.ind_test(var_0 = outcome,
                                     var_1 = candidate,
                                     conditioning_set = None)
             self.y_ind_z_dict[candidate] = y_ind_z
-            
+
         # Test for Case 8.
         #if x_ind_z and y_ind_z:
         if x_ind_z > alpha and y_ind_z > alpha:
             return True
         return False
-    
-        
+
+
     def test_causes_outcome(self,
                             exposure: str = "X",
                             outcome: str = "Y",
@@ -537,23 +575,23 @@ class LDP():
         if candidate in self.x_ind_z_dict:
             x_ind_z = self.x_ind_z_dict.get(candidate)
         else:
-            x_ind_z = self.ind_test(var_0 = exposure, 
+            x_ind_z = self.ind_test(var_0 = exposure,
                                     var_1 = candidate,
                                     conditioning_set = None)
             self.x_ind_z_dict[candidate] = x_ind_z
-        
+
         # Test conditional independence of X and Z given Y.
-        x_ind_z_given_y = self.ind_test(var_0 = exposure, 
+        x_ind_z_given_y = self.ind_test(var_0 = exposure,
                                         var_1 = candidate,
                                         conditioning_set = [outcome])
-        
+
         # Test for Case 4, which induces a v-structure X -> Y <- Z4.
-        #if x_ind_z and not x_ind_z_given_y: 
+        #if x_ind_z and not x_ind_z_given_y:
         if x_ind_z > alpha and x_ind_z_given_y <= alpha:
             return True
         return False
-    
-    
+
+
     def test_causes_or_caused_by_exposure(self,
                                           conditioning_set: list = None,
                                           exposure: str = "X",
@@ -561,7 +599,7 @@ class LDP():
                                           candidate: str = "Z",
                                           alpha: float = 0.005,
                                           verbose: bool = False) -> bool:
-        
+
         # Update conditioning set.
         if conditioning_set is not None:
             # Add exposure to conditioning set.
@@ -571,30 +609,30 @@ class LDP():
             conditioning_set = list(self.data.columns)
             conditioning_set.remove(outcome)
             conditioning_set.remove(candidate)
-            
+
         # Test marginal independence of Y and Z.
         if candidate in self.y_ind_z_dict:
             y_ind_z = self.y_ind_z_dict.get(candidate)
         else:
-            y_ind_z = self.ind_test(var_0 = outcome, 
+            y_ind_z = self.ind_test(var_0 = outcome,
                                     var_1 = candidate,
                                     conditioning_set = None)
             self.y_ind_z_dict[candidate] = y_ind_z
-            
+
 
         # Test conditional independence of Y and Z given conditioning set, which contains at least X.
         # Addresses Case 5 or Case 7.
-        y_ind_z_given_x = self.ind_test(var_0 = outcome, 
+        y_ind_z_given_x = self.ind_test(var_0 = outcome,
                                         var_1 = candidate,
                                         conditioning_set = conditioning_set)
-        
+
         # Marginally dependent and conditionally independent.
         #if not y_ind_z and y_ind_z_given_x:
         if y_ind_z <= alpha and y_ind_z_given_x > alpha:
             return True
         return False
-    
-    
+
+
     def test_shielded_collider(self,
                                exposure: str = "X",
                                outcome: str = "Y",
@@ -602,11 +640,11 @@ class LDP():
                                causes_outcome: list = None,
                                alpha: float = 0.005,
                                verbose: bool = False) -> bool:
-        
+
         '''
         This method also returns True if the candidate is a child of the outcome.
         '''
-        
+
         if causes_outcome is None:
             raise ValueError("`causes_outcome` cannot be None.")
         if isinstance(causes_outcome, str):
@@ -616,54 +654,54 @@ class LDP():
 
         # Null hypothesis = independent. p_value <= alpha indicates dependence.
         for var in causes_outcome:
-            m_ind = self.ind_test(var_0 = var, 
+            m_ind = self.ind_test(var_0 = var,
                                   var_1 = candidate,
                                   conditioning_set = None)
-            m_ind_given_exposure_outcome = self.ind_test(var_0 = var, 
+            m_ind_given_exposure_outcome = self.ind_test(var_0 = var,
                                                          var_1 = candidate,
                                                          conditioning_set = [exposure, outcome])
-           
+
             # Eliminate colliders (Z2) and children of outcome (Z6) by testing for chain structure.
             if m_ind <= alpha or m_ind_given_exposure_outcome > alpha:
                 return True
 
         return False
 
-        
+
     def test_v_structure(self,
                          collider: str,
                          causes: list,
                          discrete: bool = False,
                          alpha: float = 0.005,
                          verbose: bool = False) -> bool:
-        
+
         # Test marginal independence.
-        m_ind = self.ind_test(var_0 = causes[0], 
+        m_ind = self.ind_test(var_0 = causes[0],
                               var_1 = causes[1],
                               conditioning_set = None)
-        
+
         # Test conditional independence.
-        c_ind = self.ind_test(var_0 = causes[0], 
+        c_ind = self.ind_test(var_0 = causes[0],
                               var_1 = causes[1],
                               conditioning_set = [collider])
-        
+
         # Null hypothesis = independent. p_value <= alpha indicates dependence.
         # if m_ind and not c_ind:
         if m_ind > alpha and c_ind <= alpha:
             return True
         return False
 
-        
-    def score(self, 
-              y_true, 
-              y_pred, 
-              verbose: bool = True, 
+
+    def score(self,
+              y_true,
+              y_pred,
+              verbose: bool = True,
               plot_confusion: bool = True) -> list:
-        
+
         '''
         Compute performance metrics.
         '''
-        
+
         # Compute performance metrics.
         confusion = confusion_matrix(y_true, y_pred)
         acc = accuracy_score(y_true, y_pred)
@@ -674,7 +712,7 @@ class LDP():
             roc = roc_auc_score(y_true, y_pred)
         except:
             roc = -1.0
-        
+
         if verbose:
             print("\n---------------------------------------------")
             print("tn, fp, fn, tp =", confusion.ravel())
@@ -684,19 +722,19 @@ class LDP():
             print("Recall         =", recall)
             print("ROC AUC        =", roc)
             print("---------------------------------------------\n")
-        
+
         # Plot confusion matrix as heatmap, if specified.
         if plot_confusion and (len(confusion) > 0):
             plt.rcParams["figure.figsize"] = (5, 4)
             ax = plt.subplot()
             # (annot = True) to annotate cells.
             # (ftm = "g") to disable scientific notation.
-            sns.heatmap(confusion, annot = True, fmt = "g", ax = ax, cmap = "crest");  
+            sns.heatmap(confusion, annot = True, fmt = "g", ax = ax, cmap = "crest");
             # Labels, title, and ticks.
             ax.set_xlabel("\nPredicted labels");
-            ax.set_ylabel("True labels\n"); 
-            ax.set_title("Confusion Matrix\n"); 
-            ax.xaxis.set_ticklabels(["-1 (negative)", "1 (positive)"]); 
+            ax.set_ylabel("True labels\n");
+            ax.set_title("Confusion Matrix\n");
+            ax.xaxis.set_ticklabels(["-1 (negative)", "1 (positive)"]);
             ax.yaxis.set_ticklabels(["-1 (negative)", "1 (positive)"]);
             plt.show()
             plt.close()

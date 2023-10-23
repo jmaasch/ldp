@@ -5,6 +5,7 @@
 - `ldp_utils.py`: Class `LDPUtils` provides some basic helper functions for experiments.
 - `data_generation.py`: Class `DataGeneration` provides a basic linear-Gaussian data generating process for demonstration purposes.
 - `ldp_demo.py`: This script provides a demo of LDP functionality on a linear-Gaussian DAG.
+-  Software environment: We provide both `environment.yml` and `requirements.txt`, either of which can be used to recreate the environment used to execute LDP and reproduce all experiments.
 
 ### Demo
 
