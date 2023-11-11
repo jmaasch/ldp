@@ -90,7 +90,7 @@ class LDP():
     def oracle(self,
                var_0,
                var_1,
-               conditioning_set = None):
+               conditioning_set = None) -> float:
 
         '''
         Oracle independence test given ground truth DAG.
@@ -156,12 +156,12 @@ class LDP():
         self.z3               = [] # Mediators.
         self.z4               = [] # Parents of outcome.
         self.z5               = [] # Instrumental variables.
-        self.z5_z7            = [] # Children of exposure.
         self.z7               = [] # Children of exposure.
         self.z8               = [] # Isolated variables.
         self.z_mix            = []
         self.z_post           = []
         self.z1_z5            = []
+        self.z5_z7            = [] 
 
         #---------------------------------------
         # Steps 1–3: Test for Z8, Z4, and Z5/Z7.
@@ -324,7 +324,7 @@ class LDP():
         # Step 4: Identify a fraction of Z_post.
         #--------------------------------------------------------
 
-        # Consider all candidates that might still be confounders.
+        # Consider all candidates that have not been labeled.
         for candidate in self.z_prime:
 
             if isinstance(causes_outcome, str):
@@ -360,7 +360,7 @@ class LDP():
         # Step 5: Identify Z_mix.
         #---------------------------
 
-        # Consider all candidates that might still be confounders.
+        # Consider all candidates that have not been labeled.
         for candidate in self.z_prime:
 
             # Get conditioning set.
@@ -394,11 +394,6 @@ class LDP():
         #--------------------------------------
         # Step 6: Resolve Z_mix and Z_post.
         #--------------------------------------
-
-        # Test all remaining variables to differentiate confounders from mediators.
-        # This test should only be passed when comparing two confounders, (if one
-        # is mislabeled as an instrument), two instruments (if one is mislabeled as
-        # a confounder), or a confounder and an instrument.
 
         # Init memoization structure.
         self.ind_dictionary = dict()
