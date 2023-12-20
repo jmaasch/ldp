@@ -134,6 +134,7 @@ class LDP():
                     use_random_z4: bool = False,
                     use_random_z5: bool = False,
                     alpha: float = 0.005,
+                    alpha_step_5: float = None,
                     scale: bool = True,
                     verbose: bool = False) -> dict:
 
@@ -153,7 +154,6 @@ class LDP():
         self.pred_label_dict  = dict()
         self.z_prime          = []
         self.z1               = [] # Confounders.
-        self.z3               = [] # Mediators.
         self.z4               = [] # Parents of outcome.
         self.z5               = [] # Instrumental variables.
         self.z7               = [] # Children of exposure.
@@ -198,10 +198,16 @@ class LDP():
         #---------------------------------------
 
         start = time.time()
-        self.partition_z_step_5(exposure = exposure,
-                                outcome = outcome,
-                                alpha = alpha,
-                                verbose = verbose)
+        if alpha_step_5 is None:
+            self.partition_z_step_5(exposure = exposure,
+                                    outcome = outcome,
+                                    alpha = alpha,
+                                    verbose = verbose)
+        else:
+            self.partition_z_step_5(exposure = exposure,
+                                    outcome = outcome,
+                                    alpha = alpha_step_5,
+                                    verbose = verbose)
         if verbose:
             print("***Step 5 complete in {} seconds.".format(round(time.time() - start, 4)))
 
@@ -240,7 +246,6 @@ class LDP():
         results = {"Predicted label": list(self.pred_label_dict.values()),
                    "Predicted boolean": list(self.pred_bool_dict.values()),
                    "Z1": self.z1,
-                   "Z3": self.z3,
                    "Z4": self.z4,
                    "Z5": self.z5,
                    "Z7": self.z7,
@@ -442,8 +447,7 @@ class LDP():
                 self.ind_dictionary[candidate] = ind_results
 
                 if not identified_confounder:
-                    # If the candidate is not in Z1, then it is a mediator.
-                    self.z3.append(candidate)
+                    # If the candidate is not in Z1, then it is in Z_post.
                     self.z_post.append(candidate)
                     self.pred_label_dict[candidate] = "Z2 or Z3 or Z6" # Previously, just "Z3"
 
@@ -481,8 +485,7 @@ class LDP():
         # Now all remaining z_mix are in z_post.
         self.z_post = self.z_mix + self.z_post
         for z_post in self.z_post:
-            if z_post not in self.z3:
-                self.pred_label_dict[z_post] = "Z2 or Z3 or Z6"
+            self.pred_label_dict[z_post] = "Z2 or Z3 or Z6"
 
 
     def partition_z_step_7(self,
