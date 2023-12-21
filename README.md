@@ -1,12 +1,5 @@
 # Local Discovery by Partitioning: Polynomial-Time Causal Discovery around Exposure-Outcome Pairs
 
-This repository contains source code for the LDP method, as proposed in:
-
->Local Discovery by Partitioning: Polynomial-Time Causal Discovery Around Exposure-Outcome Pairs. J Maasch, W Pan, S Gupta, V Kuleshov, K Gan, F Wang. [arXiv:2310.17816 [stat.ML]](https://arxiv.org/abs/2310.17816). *Under review.*
-
-A preliminary version of this work was accepted at the [NeurIPS 2023 Causal Representation Learning Workshop](https://neurips.cc/virtual/2023/workshop/66497) ([poster](https://jmaasch.github.io/data/ldp_poster.pdf); [OpenReview](https://openreview.net/forum?id=jWP5C8e8Db)).
-
-
 ### Files
 - `ldp.py`: The main function of class `LDP` is `partition_z()`.
 - `ldp_utils.py`: Class `LDPUtils` provides some basic helper functions for experiments.
