@@ -102,20 +102,21 @@ class LDP():
 
         if self.dag is None:
             raise ValueError("self.dag is None; must supply ground truth DAG as numpy array to use oracle.")
+        if self.var_names is None:
+            raise ValueError("self.var_names is None; must supply ground truth variable names as list to use oracle.")
 
         # Obtain column indices.
-        var_list = ["X", "Y", "Z1", "Z2", "Z3", "Z4", "Z5", "Z6", "Z7", "Z8"]
         var_0 = var_0.split(sep = ".")[0]
         var_1 = var_1.split(sep = ".")[0]
-        var_0_idx = var_list.index(var_0)
-        var_1_idx = var_list.index(var_1)
+        var_0_idx = self.var_names.index(var_0)
+        var_1_idx = self.var_names.index(var_1)
         if conditioning_set is not None:
             conditioning_set = set([x.split(sep = ".")[0] for x in conditioning_set])
             if var_0 in conditioning_set:
                 conditioning_set.remove(var_0)
             if var_1 in conditioning_set:
                 conditioning_set.remove(var_1)
-            cond_idx = set([var_list.index(x) for x in conditioning_set])
+            cond_idx = set([self.var_names.index(x) for x in conditioning_set])
         else:
             cond_idx = set()
 
@@ -143,6 +144,9 @@ class LDP():
         This method partitions dataset Z.
         '''
 
+        # Track whether a valid adjustment set exists in Z.
+        self.vas_exists = False
+
         # Extract variable names from columns.
         self.z_names = list(self.data.columns)
         self.z_names.remove(exposure)
@@ -161,6 +165,7 @@ class LDP():
         self.z_mix            = []
         self.z_post           = []
         self.z1_z5            = []
+        self.z5_adj_x      = []
         self.z5_z7            = [] 
 
         #---------------------------------------
@@ -173,7 +178,7 @@ class LDP():
                                      alpha = alpha,
                                      verbose = verbose)
         if verbose:
-            print("***Steps 1–3 complete in {} seconds.".format(round(time.time() - start, 4)))
+            print("** Steps 1–3 complete in {} seconds.".format(round(time.time() - start, 4)))
 
         #---------------------------------------
         # Step 4: Identify a fraction of Z_post.
@@ -188,10 +193,10 @@ class LDP():
                                     alpha = alpha,
                                     verbose = verbose)
             if verbose:
-                print("***Step 4 complete in {} seconds.".format(round(time.time() - start, 4)))
+                print("** Step 4 complete in {} seconds.".format(round(time.time() - start, 4)))
         else:
             if verbose:
-                print("***No Z4 discovered. Z_post not identifiable.")
+                print("!! WARNING: Condition 2 unsatisfied (no Z4 discovered). Z_post that are descended from Y might be unidentifiable. A valid adjustment set might still be identifiable.")
 
         #---------------------------------------
         # Step 5: Identify Z_mix.
@@ -209,7 +214,7 @@ class LDP():
                                     alpha = alpha_step_5,
                                     verbose = verbose)
         if verbose:
-            print("***Step 5 complete in {} seconds.".format(round(time.time() - start, 4)))
+            print("** Step 5 complete in {} seconds.".format(round(time.time() - start, 4)))
 
         #---------------------------------------
         # Step 6: Resolve Z_post and Z_mix.
@@ -222,7 +227,7 @@ class LDP():
                                 alpha = alpha,
                                 verbose = verbose)
         if verbose:
-            print("***Step 6 complete in {} seconds.".format(round(time.time() - start, 4)))
+            print("** Step 6 complete in {} seconds.".format(round(time.time() - start, 4)))
 
         #---------------------------------------
         # Step 7: Resolve Z1 and Z5.
@@ -235,7 +240,7 @@ class LDP():
                                 verbose = verbose)
 
         if verbose:
-            print("***Step 7 complete in {} seconds.".format(round(time.time() - start, 4)))
+            print("** Step 7 complete in {} seconds.".format(round(time.time() - start, 4)))
         #'''
 
         #---------------------------------------
@@ -383,6 +388,7 @@ class LDP():
                                                                     verbose = verbose)
             if is_parent_of_x:
                 self.pred_label_dict[candidate] = "Z1 or Z2 or Z3 or Z5"
+                #print(candidate, "is d-sep from Y by", conditioning_set)
                 self.z_mix.append(candidate)
 
         # Remove Z1, Z2, Z3, Z5 from remaining candidates.
@@ -405,9 +411,11 @@ class LDP():
 
         # Evaluate all variables that are still unlabeled.
         z_mix = self.z_mix.copy() + self.z5_z7.copy()
+        #print("z_mix:", z_mix)
         for candidate in self.z_prime:
             if len(z_mix) == 0:
-                print("***No potential Z5 discovered. Z1/Z3 not identifiable.")
+                if verbose:
+                    print("!! WARNING: Condition 3 unsatisfied (no potential Z1_Z5 discovered). Z1/Z3 not identifiable.")
             else:
                 identified_confounder = False
                 ind_results = dict()
@@ -461,6 +469,7 @@ class LDP():
         z_mix_set = self.z_mix.copy()
         for z_mix in z_mix_set:
             for z1_z5 in self.z1_z5:
+            #for z1_z5 in self.z1_z5 + self.z1:
                 # Test marginal independence between z_mix and z1_z5.
                 m_ind = self.ind_test(var_0 = z_mix,
                                       var_1 = z1_z5,
@@ -480,13 +489,12 @@ class LDP():
                         self.pred_bool_dict[z_mix] = True
                         self.z_mix.remove(z_mix)
                     break
-
-
+        
         # Now all remaining z_mix are in z_post.
         self.z_post = self.z_mix + self.z_post
         for z_post in self.z_post:
             self.pred_label_dict[z_post] = "Z2 or Z3 or Z6"
-
+            
 
     def partition_z_step_7(self,
                            exposure: str = "X",
@@ -499,7 +507,8 @@ class LDP():
         #---------------------------------------
 
         if len(self.z1_z5) == 0 or len(self.z1) == 0:
-            print("***Cannot perform Step 7: len(self.z1_z5) == 0 or len(self.z1) == 0")
+            if verbose:
+                print("!! WARNING: Cannot perform Step 7: len(self.z1_z5) == 0 or len(self.z1) == 0. Consequently, a valid adjustment set could not be identified.")
             return
         else:
             # Test whether candidate is marginally dependent on a known confounder.
@@ -528,6 +537,21 @@ class LDP():
             self.z5 = [x for x in self.z1_z5 if x not in self.z1]
             for z5 in self.z5:
                 self.pred_label_dict[z5] = "Z5"
+
+            # Test for Z5 that are not d-separable from X.
+            for var in self.z5:
+                conditioning_set = [x for x in self.z5 if x != var] + self.z_post
+                ind = self.ind_test(var_0 = var,
+                                    var_1 = exposure,
+                                    conditioning_set = conditioning_set)
+                if ind <= alpha:
+                    self.vas_exists = True
+                    self.z5_adj_x.append(var)
+                    if verbose:
+                        print("** A valid adjustment set exists in Z.")
+                    break
+            if not self.vas_exists and verbose:
+                print("!! WARNING: A valid adjustment set does not exist in Z, or it is unidentifiable (e.g., due to assumption violations).")
 
 
     def test_isolated(self,
