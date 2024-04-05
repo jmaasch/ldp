@@ -102,20 +102,21 @@ class LDP():
 
         if self.dag is None:
             raise ValueError("self.dag is None; must supply ground truth DAG as numpy array to use oracle.")
+        if self.var_names is None:
+            raise ValueError("self.var_names is None; must supply ground truth variable names as list to use oracle.")
 
         # Obtain column indices.
-        var_list = ["X", "Y", "Z1", "Z2", "Z3", "Z4", "Z5", "Z6", "Z7", "Z8"]
         var_0 = var_0.split(sep = ".")[0]
         var_1 = var_1.split(sep = ".")[0]
-        var_0_idx = var_list.index(var_0)
-        var_1_idx = var_list.index(var_1)
+        var_0_idx = self.var_names.index(var_0)
+        var_1_idx = self.var_names.index(var_1)
         if conditioning_set is not None:
             conditioning_set = set([x.split(sep = ".")[0] for x in conditioning_set])
             if var_0 in conditioning_set:
                 conditioning_set.remove(var_0)
             if var_1 in conditioning_set:
                 conditioning_set.remove(var_1)
-            cond_idx = set([var_list.index(x) for x in conditioning_set])
+            cond_idx = set([self.var_names.index(x) for x in conditioning_set])
         else:
             cond_idx = set()
 
@@ -134,6 +135,7 @@ class LDP():
                     use_random_z4: bool = False,
                     use_random_z5: bool = False,
                     alpha: float = 0.005,
+                    alpha_step_5: float = None,
                     scale: bool = True,
                     verbose: bool = False) -> dict:
 
@@ -141,6 +143,9 @@ class LDP():
         '''
         This method partitions dataset Z.
         '''
+
+        # Track whether a valid adjustment set exists in Z.
+        self.vas_exists = False
 
         # Extract variable names from columns.
         self.z_names = list(self.data.columns)
@@ -153,7 +158,6 @@ class LDP():
         self.pred_label_dict  = dict()
         self.z_prime          = []
         self.z1               = [] # Confounders.
-        self.z3               = [] # Mediators.
         self.z4               = [] # Parents of outcome.
         self.z5               = [] # Instrumental variables.
         self.z7               = [] # Children of exposure.
@@ -161,6 +165,7 @@ class LDP():
         self.z_mix            = []
         self.z_post           = []
         self.z1_z5            = []
+        self.z5_adj_x      = []
         self.z5_z7            = [] 
 
         #---------------------------------------
@@ -173,7 +178,7 @@ class LDP():
                                      alpha = alpha,
                                      verbose = verbose)
         if verbose:
-            print("***Steps 1–3 complete in {} seconds.".format(round(time.time() - start, 4)))
+            print("** Steps 1–3 complete in {} seconds.".format(round(time.time() - start, 4)))
 
         #---------------------------------------
         # Step 4: Identify a fraction of Z_post.
@@ -188,22 +193,28 @@ class LDP():
                                     alpha = alpha,
                                     verbose = verbose)
             if verbose:
-                print("***Step 4 complete in {} seconds.".format(round(time.time() - start, 4)))
+                print("** Step 4 complete in {} seconds.".format(round(time.time() - start, 4)))
         else:
             if verbose:
-                print("***No Z4 discovered. Z_post not identifiable.")
+                print("!! WARNING: Condition 2 unsatisfied (no Z4 discovered). Z_post that are descended from Y might be unidentifiable. A valid adjustment set might still be identifiable.")
 
         #---------------------------------------
         # Step 5: Identify Z_mix.
         #---------------------------------------
 
         start = time.time()
-        self.partition_z_step_5(exposure = exposure,
-                                outcome = outcome,
-                                alpha = alpha,
-                                verbose = verbose)
+        if alpha_step_5 is None:
+            self.partition_z_step_5(exposure = exposure,
+                                    outcome = outcome,
+                                    alpha = alpha,
+                                    verbose = verbose)
+        else:
+            self.partition_z_step_5(exposure = exposure,
+                                    outcome = outcome,
+                                    alpha = alpha_step_5,
+                                    verbose = verbose)
         if verbose:
-            print("***Step 5 complete in {} seconds.".format(round(time.time() - start, 4)))
+            print("** Step 5 complete in {} seconds.".format(round(time.time() - start, 4)))
 
         #---------------------------------------
         # Step 6: Resolve Z_post and Z_mix.
@@ -216,7 +227,7 @@ class LDP():
                                 alpha = alpha,
                                 verbose = verbose)
         if verbose:
-            print("***Step 6 complete in {} seconds.".format(round(time.time() - start, 4)))
+            print("** Step 6 complete in {} seconds.".format(round(time.time() - start, 4)))
 
         #---------------------------------------
         # Step 7: Resolve Z1 and Z5.
@@ -229,7 +240,7 @@ class LDP():
                                 verbose = verbose)
 
         if verbose:
-            print("***Step 7 complete in {} seconds.".format(round(time.time() - start, 4)))
+            print("** Step 7 complete in {} seconds.".format(round(time.time() - start, 4)))
         #'''
 
         #---------------------------------------
@@ -240,7 +251,6 @@ class LDP():
         results = {"Predicted label": list(self.pred_label_dict.values()),
                    "Predicted boolean": list(self.pred_bool_dict.values()),
                    "Z1": self.z1,
-                   "Z3": self.z3,
                    "Z4": self.z4,
                    "Z5": self.z5,
                    "Z7": self.z7,
@@ -378,6 +388,7 @@ class LDP():
                                                                     verbose = verbose)
             if is_parent_of_x:
                 self.pred_label_dict[candidate] = "Z1 or Z2 or Z3 or Z5"
+                #print(candidate, "is d-sep from Y by", conditioning_set)
                 self.z_mix.append(candidate)
 
         # Remove Z1, Z2, Z3, Z5 from remaining candidates.
@@ -399,91 +410,92 @@ class LDP():
         self.ind_dictionary = dict()
 
         # Evaluate all variables that are still unlabeled.
-        z_mix = self.z_mix.copy() + self.z5_z7.copy()
-        for candidate in self.z_prime:
-            if len(z_mix) == 0:
-                print("***No potential Z5 discovered. Z1/Z3 not identifiable.")
-            else:
-                identified_confounder = False
-                ind_results = dict()
-                for var in z_mix:
-
-                    # Test marginal independence between z_mix and candidate.
-                    m_ind = self.ind_test(var_0 = var,
-                                          var_1 = candidate,
-                                          conditioning_set = None)
-                    ind_results[var] = m_ind > alpha
-
-                    # Test conditional independence given the exposure.
-                    c_ind = self.ind_test(var_0 = var,
-                                          var_1 = candidate,
-                                          conditioning_set = [exposure])
-
-                    # If a v-structure is identified, the candidate is in Z1
-                    # and the z_mix is in Z1 or Z5.
-                    if m_ind > alpha and c_ind <= alpha:
-                        identified_confounder = True
-                        if verbose:
-                            print("{} -> X <- {}: {} is a confounder (STEP 6.1).".format(var, candidate, candidate))
-                        # Add instrument to Z1 or Z5.
-                        if var not in self.z1_z5:
-                            self.z1_z5.append(var)
-                            self.pred_label_dict[var] = "Z1 or Z5"
-                            if var in self.z_mix:
-                                self.z_mix.remove(var)
-                        # Add confounder to Z1 list.
-                        if candidate not in self.z1:
-                            self.z1.append(candidate)
-                            self.pred_label_dict[candidate] = "Z1"
-                            self.pred_bool_dict[candidate] = True
-
-                # Store independence results for each variable pair.
-                # 1 = independent, 0 = dependent.
-                self.ind_dictionary[candidate] = ind_results
-
-                if not identified_confounder:
-                    # If the candidate is not in Z1, then it is a mediator.
-                    self.z3.append(candidate)
-                    self.z_post.append(candidate)
-                    self.pred_label_dict[candidate] = "Z2 or Z3 or Z6" # Previously, just "Z3"
-
-        # Now all Z7 are differentiated from Z5.
-        self.z7 = [x for x in self.z5_z7 if x not in self.z1_z5]
-        for z7 in self.z7:
-            self.pred_label_dict[z7] = "Z7"
-
-        # Pass through all remaining z_mix one more time to remove remaining Z1.
-        # By now, all Z5 should have been placed in self.z1_z5.
-        z_mix_set = self.z_mix.copy()
-        for z_mix in z_mix_set:
-            for z1_z5 in self.z1_z5:
-                # Test marginal independence between z_mix and z1_z5.
-                m_ind = self.ind_test(var_0 = z_mix,
-                                      var_1 = z1_z5,
-                                      conditioning_set = None)
-                # Test conditional independence given the exposure.
-                #c_ind = self.ind_test(var_0 = z_mix,
-                #                      var_1 = z1_z5,
-                #                      conditioning_set = [exposure])
-                # If a v-structure is identified, then z_mix is in Z1.
-                #if m_ind > alpha and c_ind <= alpha:
-                if m_ind > alpha:
+        if len(self.z_prime) > 0:
+            z_mix = self.z_mix.copy() + self.z5_z7.copy()
+            for candidate in self.z_prime:
+                if len(z_mix) == 0:
                     if verbose:
-                        print("{} -> X <- {}: {} is a confounder (STEP 6.2).".format(z1_z5, z_mix, z_mix))
-                    if z_mix not in self.z1:
-                        self.z1.append(z_mix)
-                        self.pred_label_dict[z_mix] = "Z1"
-                        self.pred_bool_dict[z_mix] = True
-                        self.z_mix.remove(z_mix)
-                    break
+                        print("!! WARNING: Condition 3 unsatisfied (no potential Z1_Z5 discovered). Z1/Z3 not identifiable.")
+                else:
+                    identified_confounder = False
+                    ind_results = dict()
+                    for var in z_mix:
+    
+                        # Test marginal independence between z_mix and candidate.
+                        m_ind = self.ind_test(var_0 = var,
+                                              var_1 = candidate,
+                                              conditioning_set = None)
+                        ind_results[var] = m_ind > alpha
+    
+                        # Test conditional independence given the exposure.
+                        c_ind = self.ind_test(var_0 = var,
+                                              var_1 = candidate,
+                                              conditioning_set = [exposure])
+    
+                        # If a v-structure is identified, the candidate is in Z1
+                        # and the z_mix is in Z1 or Z5.
+                        if m_ind > alpha and c_ind <= alpha:
+                            identified_confounder = True
+                            if verbose:
+                                print("{} -> X <- {}: {} is a confounder (STEP 6.1).".format(var, candidate, candidate))
+                            # Add instrument to Z1 or Z5.
+                            if var not in self.z1_z5:
+                                self.z1_z5.append(var)
+                                self.pred_label_dict[var] = "Z1 or Z5"
+                                if var in self.z_mix:
+                                    self.z_mix.remove(var)
+                            # Add confounder to Z1 list.
+                            if candidate not in self.z1:
+                                self.z1.append(candidate)
+                                self.pred_label_dict[candidate] = "Z1"
+                                self.pred_bool_dict[candidate] = True
+    
+                    # Store independence results for each variable pair.
+                    # 1 = independent, 0 = dependent.
+                    self.ind_dictionary[candidate] = ind_results
+    
+                    if not identified_confounder:
+                        # If the candidate is not in Z1, then it is in Z_post.
+                        self.z_post.append(candidate)
+                        self.pred_label_dict[candidate] = "Z2 or Z3 or Z6" # Previously, just "Z3"
+    
+            # Now all Z7 are differentiated from Z5.
+            if len(self.z1_z5) > 0:
+                self.z7 = [x for x in self.z5_z7 if x not in self.z1_z5]
+                for z7 in self.z7:
+                    self.pred_label_dict[z7] = "Z7"
 
-
-        # Now all remaining z_mix are in z_post.
-        self.z_post = self.z_mix + self.z_post
-        for z_post in self.z_post:
-            if z_post not in self.z3:
+            # Pass through all remaining z_mix one more time to remove remaining Z1.
+            # By now, all Z5 should have been placed in self.z1_z5.
+            z_mix_set = self.z_mix.copy()
+            for z_mix in z_mix_set:
+                for z1_z5 in self.z1_z5:
+                #for z1_z5 in self.z1_z5 + self.z1:
+                    # Test marginal independence between z_mix and z1_z5.
+                    m_ind = self.ind_test(var_0 = z_mix,
+                                          var_1 = z1_z5,
+                                          conditioning_set = None)
+                    # Test conditional independence given the exposure.
+                    #c_ind = self.ind_test(var_0 = z_mix,
+                    #                      var_1 = z1_z5,
+                    #                      conditioning_set = [exposure])
+                    # If a v-structure is identified, then z_mix is in Z1.
+                    #if m_ind > alpha and c_ind <= alpha:
+                    if m_ind > alpha:
+                        if verbose:
+                            print("{} -> X <- {}: {} is a confounder (STEP 6.2).".format(z1_z5, z_mix, z_mix))
+                        if z_mix not in self.z1:
+                            self.z1.append(z_mix)
+                            self.pred_label_dict[z_mix] = "Z1"
+                            self.pred_bool_dict[z_mix] = True
+                            self.z_mix.remove(z_mix)
+                        break
+            
+            # Now all remaining z_mix are in z_post.
+            self.z_post = self.z_mix + self.z_post
+            for z_post in self.z_post:
                 self.pred_label_dict[z_post] = "Z2 or Z3 or Z6"
-
+            
 
     def partition_z_step_7(self,
                            exposure: str = "X",
@@ -496,7 +508,8 @@ class LDP():
         #---------------------------------------
 
         if len(self.z1_z5) == 0 or len(self.z1) == 0:
-            print("***Cannot perform Step 7: len(self.z1_z5) == 0 or len(self.z1) == 0")
+            if verbose:
+                print("!! WARNING: Cannot perform Step 7: len(self.z1_z5) == 0 or len(self.z1) == 0. Consequently, a valid adjustment set could not be identified.")
             return
         else:
             # Test whether candidate is marginally dependent on a known confounder.
@@ -525,6 +538,21 @@ class LDP():
             self.z5 = [x for x in self.z1_z5 if x not in self.z1]
             for z5 in self.z5:
                 self.pred_label_dict[z5] = "Z5"
+
+            # Test for Z5 that are not d-separable from X.
+            for var in self.z5:
+                conditioning_set = [x for x in self.z5 if x != var] + self.z_post
+                ind = self.ind_test(var_0 = var,
+                                    var_1 = exposure,
+                                    conditioning_set = conditioning_set)
+                if ind <= alpha:
+                    self.vas_exists = True
+                    self.z5_adj_x.append(var)
+                    if verbose:
+                        print("** A valid adjustment set exists in Z.")
+                    break
+            if not self.vas_exists and verbose:
+                print("!! WARNING: A valid adjustment set does not exist in Z, or it is unidentifiable (e.g., due to assumption violations).")
 
 
     def test_isolated(self,
