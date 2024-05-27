@@ -241,7 +241,19 @@ class LDP():
 
         if verbose:
             print("** Step 7 complete in {} seconds.".format(round(time.time() - start, 4)))
-        #'''
+
+        #---------------------------------------
+        # Step 8: Test Z5 criterion.
+        #---------------------------------------
+
+        start = time.time()
+        self.test_z5_criterion(exposure = exposure,
+                               outcome = outcome,
+                               alpha = alpha,
+                               verbose = verbose)
+
+        if verbose:
+            print("** Step 8 complete in {} seconds.".format(round(time.time() - start, 4)))
 
         #---------------------------------------
         # Return results.
@@ -272,7 +284,7 @@ class LDP():
             #-------------------------------------------
 
 
-            is_isolated = self.test_isolated(exposure = exposure,
+            is_isolated = self.test_z8(exposure = exposure,
                                              outcome = outcome,
                                              candidate = candidate,
                                              alpha = alpha,
@@ -287,7 +299,7 @@ class LDP():
             # Step 2: Test for causes of outcome (Z4).
             #-----------------------------------------
 
-            causes_y = self.test_causes_outcome(exposure = exposure,
+            causes_y = self.test_z4(exposure = exposure,
                                                 outcome = outcome,
                                                 candidate = candidate,
                                                 alpha = alpha,
@@ -305,12 +317,12 @@ class LDP():
             # Conditioning only on the exposure is often sufficient in practice,
             # even in the presence of open backdoor paths.
             conditioning_set = [exposure]
-            is_z5_z7 = self.test_causes_or_caused_by_exposure(conditioning_set = conditioning_set,
-                                                              exposure = exposure,
-                                                              outcome = outcome,
-                                                              candidate = candidate,
-                                                              alpha = alpha,
-                                                              verbose = verbose)
+            is_z5_z7 = self.test_z5_z7(conditioning_set = conditioning_set,
+                                       exposure = exposure,
+                                       outcome = outcome,
+                                       candidate = candidate,
+                                       alpha = alpha,
+                                       verbose = verbose)
 
             if is_z5_z7:
                 self.z5_z7.append(candidate)
@@ -344,12 +356,12 @@ class LDP():
                     causes_outcome = [random.choice(self.z4)]
                 else:
                     causes_outcome = self.z4.copy()
-            is_post = self.test_shielded_collider(exposure = exposure,
-                                                  outcome = outcome,
-                                                  candidate = candidate,
-                                                  causes_outcome = causes_outcome,
-                                                  alpha = alpha,
-                                                  verbose = verbose)
+            is_post = self.test_zpost(exposure = exposure,
+                                      outcome = outcome,
+                                      candidate = candidate,
+                                      causes_outcome = causes_outcome,
+                                      alpha = alpha,
+                                      verbose = verbose)
             if is_post:
                 if verbose:
                     print(candidate, "is in Z_post (STEP 4).")
@@ -380,12 +392,12 @@ class LDP():
                 conditioning_set = None
 
             # Identify instrumental variables and children of the exposure.
-            is_parent_of_x = self.test_causes_or_caused_by_exposure(conditioning_set = conditioning_set,
-                                                                    exposure = exposure,
-                                                                    outcome = outcome,
-                                                                    candidate = candidate,
-                                                                    alpha = alpha,
-                                                                    verbose = verbose)
+            is_parent_of_x = self.test_z5_z7(conditioning_set = conditioning_set,
+                                             exposure = exposure,
+                                             outcome = outcome,
+                                             candidate = candidate,
+                                             alpha = alpha,
+                                             verbose = verbose)
             if is_parent_of_x:
                 self.pred_label_dict[candidate] = "Z1 or Z2 or Z3 or Z5"
                 #print(candidate, "is d-sep from Y by", conditioning_set)
@@ -539,28 +551,35 @@ class LDP():
             for z5 in self.z5:
                 self.pred_label_dict[z5] = "Z5"
 
-            # Test for Z5 that are not d-separable from X.
-            for var in self.z5:
-                conditioning_set = [x for x in self.z5 if x != var] + self.z_post
-                ind = self.ind_test(var_0 = var,
-                                    var_1 = exposure,
-                                    conditioning_set = conditioning_set)
-                if ind <= alpha:
-                    self.vas_exists = True
-                    self.z5_adj_x.append(var)
-                    if verbose:
-                        print("** A valid adjustment set exists in Z.")
-                    break
-            if not self.vas_exists and verbose:
-                print("!! WARNING: A valid adjustment set does not exist in Z, or it is unidentifiable (e.g., due to assumption violations).")
 
+    def test_z5_criterion(self,
+                          exposure: str = "X",
+                          outcome: str = "Y",
+                          candidate: str = "Z",
+                          alpha: float = 0.005,
+                          verbose: bool = False):
 
-    def test_isolated(self,
-                      exposure: str = "X",
-                      outcome: str = "Y",
-                      candidate: str = "Z",
-                      alpha: float = 0.005,
-                      verbose: bool = False) -> bool:
+        # Test for Z5 that is d-separable from Y given Z and Z1.
+        for z5 in self.z5:
+            ind = self.ind_test(var_0 = z5,
+                                var_1 = outcome,
+                                conditioning_set = self.z1 + [exposure])
+            if ind > alpha:
+                self.vas_exists = True
+                if verbose:
+                    print(z5, "is d-separable from Y given Z1.")
+                    print("** A valid adjustment set exists in Z.")
+                return
+        if not self.vas_exists and verbose:
+            print("!! WARNING: A valid adjustment set does not exist in Z, or it is unidentifiable (e.g., due to assumption violations).")
+            return
+
+    def test_z8(self,
+                exposure: str = "X",
+                outcome: str = "Y",
+                candidate: str = "Z",
+                alpha: float = 0.005,
+                verbose: bool = False) -> bool:
 
         # Test marginal independence of X and Z.
         if candidate in self.x_ind_z_dict:
@@ -580,19 +599,19 @@ class LDP():
                                     conditioning_set = None)
             self.y_ind_z_dict[candidate] = y_ind_z
 
-        # Test for Case 8.
+        # Test for Z8.
         #if x_ind_z and y_ind_z:
         if x_ind_z > alpha and y_ind_z > alpha:
             return True
         return False
 
 
-    def test_causes_outcome(self,
-                            exposure: str = "X",
-                            outcome: str = "Y",
-                            candidate: str = "Z",
-                            alpha: float = 0.005,
-                            verbose: bool = False) -> bool:
+    def test_z4(self,
+                exposure: str = "X",
+                outcome: str = "Y",
+                candidate: str = "Z",
+                alpha: float = 0.005,
+                verbose: bool = False) -> bool:
 
         # Test marginal independence of X and Z.
         if candidate in self.x_ind_z_dict:
@@ -608,20 +627,20 @@ class LDP():
                                         var_1 = candidate,
                                         conditioning_set = [outcome])
 
-        # Test for Case 4, which induces a v-structure X -> Y <- Z4.
+        # Test for Z4, which induces a v-structure X -> Y <- Z4.
         #if x_ind_z and not x_ind_z_given_y:
         if x_ind_z > alpha and x_ind_z_given_y <= alpha:
             return True
         return False
 
 
-    def test_causes_or_caused_by_exposure(self,
-                                          conditioning_set: list = None,
-                                          exposure: str = "X",
-                                          outcome: str = "Y",
-                                          candidate: str = "Z",
-                                          alpha: float = 0.005,
-                                          verbose: bool = False) -> bool:
+    def test_z5_z7(self,
+                   conditioning_set: list = None,
+                   exposure: str = "X",
+                   outcome: str = "Y",
+                   candidate: str = "Z",
+                   alpha: float = 0.005,
+                   verbose: bool = False) -> bool:
 
         # Update conditioning set.
         if conditioning_set is not None:
@@ -656,13 +675,13 @@ class LDP():
         return False
 
 
-    def test_shielded_collider(self,
-                               exposure: str = "X",
-                               outcome: str = "Y",
-                               candidate: str = "Z",
-                               causes_outcome: list = None,
-                               alpha: float = 0.005,
-                               verbose: bool = False) -> bool:
+    def test_zpost(self,
+                   exposure: str = "X",
+                   outcome: str = "Y",
+                   candidate: str = "Z",
+                   causes_outcome: list = None,
+                   alpha: float = 0.005,
+                   verbose: bool = False) -> bool:
 
         '''
         This method also returns True if the candidate is a child of the outcome.
